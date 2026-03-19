@@ -12,6 +12,7 @@ from . import files, dotenv
 from python.helpers.print_style import PrintStyle
 from python.helpers.providers import get_providers
 from python.helpers.secrets import SecretsManager
+from python.helpers.cloudflare_workers_ai import DEFAULT_MODEL as CLOUDFLARE_WORKERS_AI_DEFAULT_MODEL
 from python.helpers import dirty_json
 
 
@@ -619,6 +620,21 @@ def convert_out(settings: Settings) -> SettingsOutput:
         "fields": litellm_fields,
         "tab": "external",
     }
+
+    cloudflare_workers_ai_section: SettingsSection = {
+        "id": "cloudflare_workers_ai",
+        "title": "Cloudflare Workers AI",
+        "description": "Manage Cloudflare Workers AI credentials, health, rotation, and testing. The default recommended model is <code>" + CLOUDFLARE_WORKERS_AI_DEFAULT_MODEL + "</code>.",
+        "fields": [
+            {
+                "id": "cloudflare_workers_ai_manager",
+                "type": "html",
+                "value": "<div id=\"cloudflare-workers-ai-settings\"></div>",
+            }
+        ],
+        "tab": "external",
+    }
+
 
     # Agent config section
     agent_fields: list[SettingsField] = []
@@ -1262,6 +1278,7 @@ def convert_out(settings: Settings) -> SettingsOutput:
             memory_section,
             speech_section,
             api_keys_section,
+            cloudflare_workers_ai_section,
             litellm_section,
             secrets_section,
             auth_section,

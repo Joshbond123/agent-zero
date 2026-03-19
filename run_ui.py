@@ -11,7 +11,7 @@ import threading
 from flask import Flask, request, Response, session, redirect, url_for, render_template_string
 from werkzeug.wrappers.response import Response as BaseResponse
 import initialize
-from python.helpers import files, git, mcp_server, fasta2a_server
+from python.helpers import files, git
 from python.helpers.files import get_abs_path
 from python.helpers import runtime, dotenv, process
 from python.helpers.extract_tools import load_classes_from_folder
@@ -200,7 +200,6 @@ def run():
     from werkzeug.serving import WSGIRequestHandler
     from werkzeug.serving import make_server
     from werkzeug.middleware.dispatcher import DispatcherMiddleware
-    from a2wsgi import ASGIMiddleware
 
     PrintStyle().print("Starting server...")
 
@@ -244,10 +243,34 @@ def run():
         register_api_handler(webapp, handler)
 
     # add the webapp, mcp, and a2a to the app
-    middleware_routes = {
-        "/mcp": ASGIMiddleware(app=mcp_server.DynamicMcpProxy.get_instance()),  # type: ignore
-        "/a2a": ASGIMiddleware(app=fasta2a_server.DynamicA2AProxy.get_instance()),  # type: ignore
-    }
+    middleware_routes = {}
+
+    try:
+        from a2wsgi import ASGIMiddleware
+    except ImportError:
+        ASGIMiddleware = None
+        PrintStyle(font_color="yellow").print(
+            "Optional dependency 'a2wsgi' not installed; MCP and A2A routes will not be mounted."
+        )
+
+    if ASGIMiddleware:
+        try:
+            from python.helpers.mcp_server import DynamicMcpProxy
+
+            middleware_routes["/mcp"] = ASGIMiddleware(DynamicMcpProxy.get_instance())
+        except Exception as e:
+            PrintStyle(font_color="yellow").print(
+                f"Failed to mount MCP server route: {e}"
+            )
+
+        try:
+            from python.helpers.fasta2a_server import get_proxy
+
+            middleware_routes["/a2a"] = ASGIMiddleware(get_proxy())
+        except Exception as e:
+            PrintStyle(font_color="yellow").print(
+                f"Failed to mount A2A server route: {e}"
+            )
 
     app = DispatcherMiddleware(webapp, middleware_routes)  # type: ignore
 

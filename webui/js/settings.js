@@ -589,3 +589,148 @@ function showToast(message, type = 'info') {
         return null;
     }
 }
+
+settingsModalProxy.cloudflareWorkersAI = {
+    credentials: [],
+    editingId: null,
+    form: { name: '', account_id: '', api_key: '', model_name: '@cf/openai/gpt-oss-120b', enabled: true },
+
+    async refresh() {
+        const data = await sendJsonData('/cloudflare_workers_ai_credentials_get', null);
+        this.credentials = data.credentials || [];
+        settingsModalProxy.renderCloudflareWorkersAI();
+    },
+
+    resetForm() {
+        this.editingId = null;
+        this.form = { name: '', account_id: '', api_key: '', model_name: '@cf/openai/gpt-oss-120b', enabled: true };
+    },
+
+    startEdit(id) {
+        const cred = this.credentials.find(item => item.id === id);
+        if (!cred) return;
+        this.editingId = id;
+        this.form = {
+            name: cred.name || '',
+            account_id: cred.account_id || '',
+            api_key: '••••••••',
+            model_name: cred.model_name || '@cf/openai/gpt-oss-120b',
+            enabled: !!cred.enabled,
+        };
+        settingsModalProxy.renderCloudflareWorkersAI();
+    },
+
+    async save() {
+        const payload = { ...this.form };
+        if (this.editingId) payload.id = this.editingId;
+        await sendJsonData('/cloudflare_workers_ai_credentials_upsert', payload);
+        this.resetForm();
+        await this.refresh();
+    },
+
+    async remove(id) {
+        await sendJsonData('/cloudflare_workers_ai_credentials_delete', { id });
+        if (this.editingId === id) this.resetForm();
+        await this.refresh();
+    },
+
+    async test(id) {
+        await sendJsonData('/cloudflare_workers_ai_credentials_test', { id });
+        await this.refresh();
+    },
+};
+
+settingsModalProxy.renderCloudflareWorkersAI = function () {
+    const mount = document.getElementById('cloudflare-workers-ai-settings');
+    if (!mount) return;
+    const state = this.cloudflareWorkersAI;
+    const rows = state.credentials.map(cred => `
+        <tr>
+            <td>${cred.name || ''}</td>
+            <td><code>${cred.account_id || ''}</code></td>
+            <td><code>${cred.model_name || ''}</code></td>
+            <td>${cred.enabled ? 'Enabled' : 'Disabled'}</td>
+            <td><span class="cfwai-status ${cred.healthy ? 'healthy' : 'cooldown'}">${cred.status || 'unknown'}</span><div class="cfwai-substatus">${cred.last_status_message || ''}</div></td>
+            <td>
+                <button class="btn btn-field" data-action="test" data-id="${cred.id}">Test</button>
+                <button class="btn btn-field" data-action="edit" data-id="${cred.id}">Edit</button>
+                <button class="btn btn-cancel" data-action="delete" data-id="${cred.id}">Delete</button>
+            </td>
+        </tr>`).join('');
+
+    mount.innerHTML = `
+        <div class="cfwai-manager">
+            <div class="cfwai-form">
+                <div class="cfwai-form-grid">
+                    <label><span>Name</span><input id="cfwai-name" type="text" value="${state.form.name || ''}" placeholder="Primary account"></label>
+                    <label><span>Cloudflare Account ID</span><input id="cfwai-account-id" type="text" value="${state.form.account_id || ''}" placeholder="1234567890abcdef"></label>
+                    <label><span>Workers AI API key</span><input id="cfwai-api-key" type="password" value="${state.form.api_key || ''}" placeholder="Enter API token"></label>
+                    <label><span>Model name</span><input id="cfwai-model-name" type="text" value="${state.form.model_name || '@cf/openai/gpt-oss-120b'}"></label>
+                    <label class="cfwai-checkbox"><input id="cfwai-enabled" type="checkbox" ${state.form.enabled ? 'checked' : ''}><span>Enabled</span></label>
+                </div>
+                <div class="cfwai-form-actions">
+                    <button class="btn btn-ok" id="cfwai-save">${state.editingId ? 'Update credential' : 'Add credential'}</button>
+                    <button class="btn btn-cancel" id="cfwai-cancel">Clear</button>
+                </div>
+                <p class="cfwai-help">Secrets stay masked in the UI and are stored via Agent Zero secrets storage. Requests rotate across enabled healthy credentials using round-robin with cooldowns and retries.</p>
+            </div>
+            <div class="cfwai-table-wrap">
+                <table class="cfwai-table">
+                    <thead><tr><th>Name</th><th>Account ID</th><th>Model</th><th>Enabled</th><th>Health</th><th>Actions</th></tr></thead>
+                    <tbody>${rows || '<tr><td colspan="6">No Cloudflare Workers AI credentials saved yet.</td></tr>'}</tbody>
+                </table>
+            </div>
+        </div>`;
+
+    const readForm = () => {
+        state.form = {
+            name: mount.querySelector('#cfwai-name').value,
+            account_id: mount.querySelector('#cfwai-account-id').value,
+            api_key: mount.querySelector('#cfwai-api-key').value,
+            model_name: mount.querySelector('#cfwai-model-name').value,
+            enabled: mount.querySelector('#cfwai-enabled').checked,
+        };
+    };
+
+    mount.querySelector('#cfwai-save')?.addEventListener('click', async () => {
+        try {
+            readForm();
+            await state.save();
+            showToast('Cloudflare Workers AI credential saved.', 'success');
+        } catch (error) {
+            console.error(error);
+            showToast(`Failed to save credential: ${error.message}`, 'error');
+        }
+    });
+    mount.querySelector('#cfwai-cancel')?.addEventListener('click', () => {
+        state.resetForm();
+        settingsModalProxy.renderCloudflareWorkersAI();
+    });
+
+    mount.querySelectorAll('[data-action]').forEach(button => {
+        button.addEventListener('click', async () => {
+            const { action, id } = button.dataset;
+            try {
+                if (action === 'edit') {
+                    state.startEdit(id);
+                } else if (action === 'delete') {
+                    await state.remove(id);
+                    showToast('Credential deleted.', 'success');
+                } else if (action === 'test') {
+                    await state.test(id);
+                    showToast('Credential test completed.', 'success');
+                }
+            } catch (error) {
+                console.error(error);
+                showToast(`Cloudflare Workers AI action failed: ${error.message}`, 'error');
+            }
+        });
+    });
+};
+
+const originalSettingsOpenModal = settingsModalProxy.openModal.bind(settingsModalProxy);
+settingsModalProxy.openModal = async function () {
+    const resultPromise = originalSettingsOpenModal();
+    setTimeout(() => this.cloudflareWorkersAI.refresh(), 50);
+    return resultPromise;
+};

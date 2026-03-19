@@ -938,3 +938,17 @@ nav ul li a img {
 }
 
 /* Token field (for ad-hoc tasks) */
+
+.cfwai-manager { display: grid; gap: 1rem; }
+.cfwai-form { border: 1px solid var(--color-border); border-radius: 8px; padding: 1rem; background: var(--color-panel); }
+.cfwai-form-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(220px,1fr)); gap: 0.75rem; }
+.cfwai-form-grid label { display: flex; flex-direction: column; gap: 0.35rem; }
+.cfwai-checkbox { justify-content: end; align-self: end; }
+.cfwai-form-actions { display:flex; gap:0.75rem; margin-top:1rem; }
+.cfwai-help, .cfwai-substatus { font-size: 0.85rem; opacity: 0.8; }
+.cfwai-table-wrap { overflow-x: auto; }
+.cfwai-table { width: 100%; border-collapse: collapse; }
+.cfwai-table th, .cfwai-table td { border-bottom: 1px solid var(--color-border); padding: 0.65rem; text-align: left; vertical-align: top; }
+.cfwai-status { display:inline-block; padding:0.2rem 0.5rem; border-radius:999px; font-size:0.85rem; }
+.cfwai-status.healthy { background:#1f7a1f; color:#fff; }
+.cfwai-status.cooldown { background:#a26200; color:#fff; }

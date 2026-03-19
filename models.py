@@ -21,6 +21,7 @@ from litellm.types.utils import ModelResponse
 
 from python.helpers import dotenv
 from python.helpers import settings, dirty_json
+from python.helpers.cloudflare_workers_ai import get_router, get_manager
 from python.helpers.dotenv import load_dotenv
 from python.helpers.providers import get_provider_config
 from python.helpers.rate_limiter import RateLimiter
@@ -40,7 +41,6 @@ from langchain_core.messages import (
     SystemMessage,
 )
 from langchain.embeddings.base import Embeddings
-from sentence_transformers import SentenceTransformer
 
 
 # disable extra logging, must be done repeatedly, otherwise browser-use will turn it back on for some reason
@@ -56,8 +56,6 @@ def turn_off_logging():
 # init
 load_dotenv()
 turn_off_logging()
-browser_use_monkeypatch.apply()
-
 litellm.modify_params = True # helps fix anthropic tool calls by browser-use
 
 class ModelType(Enum):
@@ -566,9 +564,82 @@ class AsyncAIChatReplacement:
         self.chat = AsyncAIChatReplacement._Chat(wrapper)
 
 
-from browser_use.llm import ChatOllama, ChatOpenRouter, ChatGoogle, ChatAnthropic, ChatGroq, ChatOpenAI
+class CloudflareWorkersAIChatWrapper(LiteLLMChatWrapper):
+    def __init__(self, model: str, provider: str, model_config: Optional[ModelConfig] = None, **kwargs: Any):
+        super().__init__(model=model, provider=provider, model_config=model_config, **kwargs)
+        object.__setattr__(self, "router", get_router())
 
-class BrowserCompatibleChatWrapper(ChatOpenRouter):
+    def _with_request_kwargs(self, kwargs: dict[str, Any], route_kwargs: dict[str, Any]) -> dict[str, Any]:
+        merged = {**self.kwargs, **kwargs}
+        merged.update(route_kwargs)
+        return merged
+
+    def _call(self, messages: List[BaseMessage], stop: Optional[List[str]] = None, run_manager: Optional[CallbackManagerForLLMRun] = None, **kwargs: Any) -> str:
+        msgs = self._convert_messages(messages)
+        apply_rate_limiter_sync(self.a0_model_conf, str(msgs))
+
+        def op(_credential, route_kwargs):
+            return completion(model=self.model_name, messages=msgs, stop=stop, **self._with_request_kwargs(kwargs, route_kwargs))
+
+        resp = self.router.run_with_rotation_sync(operation=op)
+        parsed = _parse_chunk(resp)
+        output = ChatGenerationResult(parsed).output()
+        return output["response_delta"]
+
+    async def _astream(self, messages: List[BaseMessage], stop: Optional[List[str]] = None, run_manager: Optional[AsyncCallbackManagerForLLMRun] = None, **kwargs: Any) -> AsyncIterator[ChatGenerationChunk]:
+        msgs = self._convert_messages(messages)
+        await apply_rate_limiter(self.a0_model_conf, str(msgs))
+        result = ChatGenerationResult()
+
+        async def op(_credential, route_kwargs):
+            response = await acompletion(model=self.model_name, messages=msgs, stream=True, stop=stop, **self._with_request_kwargs(kwargs, route_kwargs))
+            return response
+
+        response = await self.router.run_with_rotation(operation=op)
+        async for chunk in response:
+            parsed = _parse_chunk(chunk)
+            output = result.add_chunk(parsed)
+            if output["response_delta"]:
+                yield ChatGenerationChunk(message=AIMessageChunk(content=output["response_delta"]))
+
+    async def unified_call(self, system_message="", user_message="", messages: List[BaseMessage] | None = None, response_callback: Callable[[str, str], Awaitable[None]] | None = None, reasoning_callback: Callable[[str, str], Awaitable[None]] | None = None, tokens_callback: Callable[[str, int], Awaitable[None]] | None = None, rate_limiter_callback: (Callable[[str, str, int, int], Awaitable[bool]] | None) = None, **kwargs: Any) -> Tuple[str, str]:
+        turn_off_logging()
+        if not messages:
+            messages = []
+        if system_message:
+            messages.insert(0, SystemMessage(content=system_message))
+        if user_message:
+            messages.append(HumanMessage(content=user_message))
+        msgs_conv = self._convert_messages(messages)
+        limiter = await apply_rate_limiter(self.a0_model_conf, str(msgs_conv), rate_limiter_callback)
+        call_kwargs: dict[str, Any] = {**self.kwargs, **kwargs}
+        result = ChatGenerationResult()
+
+        async def op(_credential, route_kwargs):
+            return await acompletion(model=self.model_name, messages=msgs_conv, stream=True, **{**call_kwargs, **route_kwargs})
+
+        response = await self.router.run_with_rotation(operation=op)
+        async for chunk in response:
+            parsed = _parse_chunk(chunk)
+            output = result.add_chunk(parsed)
+            if output["reasoning_delta"]:
+                if reasoning_callback:
+                    await reasoning_callback(output["reasoning_delta"], result.reasoning)
+                if tokens_callback:
+                    await tokens_callback(output["reasoning_delta"], approximate_tokens(output["reasoning_delta"]))
+                if limiter:
+                    limiter.add(output=approximate_tokens(output["reasoning_delta"]))
+            if output["response_delta"]:
+                if response_callback:
+                    await response_callback(output["response_delta"], result.response)
+                if tokens_callback:
+                    await tokens_callback(output["response_delta"], approximate_tokens(output["response_delta"]))
+                if limiter:
+                    limiter.add(output=approximate_tokens(output["response_delta"]))
+        return result.response, result.reasoning
+
+
+class BrowserCompatibleChatWrapper:
     """
     A wrapper for browser agent that can filter/sanitize messages
     before sending them to the LLM.
@@ -576,6 +647,7 @@ class BrowserCompatibleChatWrapper(ChatOpenRouter):
 
     def __init__(self, *args, **kwargs):
         turn_off_logging()
+        browser_use_monkeypatch.apply()
         # Create the underlying LiteLLM wrapper
         self._wrapper = LiteLLMChatWrapper(*args, **kwargs)
         # Browser-use may expect a 'model' attribute
@@ -610,6 +682,7 @@ class BrowserCompatibleChatWrapper(ChatOpenRouter):
 
             # hack from browser-use to fix json schema for gemini (additionalProperties, $defs, $ref)
             if "response_format" in kwrgs and "json_schema" in kwrgs["response_format"] and model.startswith("gemini/"):
+                from browser_use.llm import ChatGoogle
                 kwrgs["response_format"]["json_schema"] = ChatGoogle("")._fix_gemini_schema(kwrgs["response_format"]["json_schema"])
 
             resp = await acompletion(
@@ -642,6 +715,16 @@ class BrowserCompatibleChatWrapper(ChatOpenRouter):
             pass
 
         return resp
+
+
+
+class CloudflareWorkersAIBrowserWrapper(BrowserCompatibleChatWrapper):
+    def __init__(self, *args, **kwargs):
+        turn_off_logging()
+        browser_use_monkeypatch.apply()
+        self._wrapper = CloudflareWorkersAIChatWrapper(*args, **kwargs)
+        self.model = self._wrapper.model_name
+        self.kwargs = self._wrapper.kwargs
 
 class LiteLLMEmbeddingWrapper(Embeddings):
     model_name: str
@@ -705,6 +788,8 @@ class LocalSentenceTransformerWrapper(Embeddings):
             "model_kwargs",
         }
         st_kwargs = {k: v for k, v in (kwargs or {}).items() if k in st_allowed_keys}
+
+        from sentence_transformers import SentenceTransformer
 
         self.model = SentenceTransformer(model, **st_kwargs)
         self.model_name = model
@@ -812,6 +897,9 @@ def _parse_chunk(chunk: Any) -> ChatChunk:
 
 def _adjust_call_args(provider_name: str, model_name: str, kwargs: dict):
     # for openrouter add app reference
+    if provider_name == "cloudflare_workers_ai":
+        provider_name = "openai"
+
     if provider_name == "openrouter":
         kwargs["extra_headers"] = {
             "HTTP-Referer": "https://agent-zero.ai",
@@ -878,8 +966,14 @@ def get_chat_model(
 ) -> LiteLLMChatWrapper:
     orig = provider.lower()
     provider_name, kwargs = _merge_provider_defaults("chat", orig, kwargs)
+    wrapper_cls = CloudflareWorkersAIChatWrapper if orig == "cloudflare_workers_ai" else LiteLLMChatWrapper
+    if orig == "cloudflare_workers_ai" and "api_key" not in kwargs:
+        credential = get_manager().next_credential()
+        if credential:
+            kwargs["api_key"] = credential.get_api_key()
+            kwargs["api_base"] = credential.api_base
     return _get_litellm_chat(
-        LiteLLMChatWrapper, name, provider_name, model_config, **kwargs
+        wrapper_cls, name, provider_name, model_config, **kwargs
     )
 
 
@@ -888,8 +982,14 @@ def get_browser_model(
 ) -> BrowserCompatibleChatWrapper:
     orig = provider.lower()
     provider_name, kwargs = _merge_provider_defaults("chat", orig, kwargs)
+    wrapper_cls = CloudflareWorkersAIBrowserWrapper if orig == "cloudflare_workers_ai" else BrowserCompatibleChatWrapper
+    if orig == "cloudflare_workers_ai" and "api_key" not in kwargs:
+        credential = get_manager().next_credential()
+        if credential:
+            kwargs["api_key"] = credential.get_api_key()
+            kwargs["api_base"] = credential.api_base
     return _get_litellm_chat(
-        BrowserCompatibleChatWrapper, name, provider_name, model_config, **kwargs
+        wrapper_cls, name, provider_name, model_config, **kwargs
     )
 
 
