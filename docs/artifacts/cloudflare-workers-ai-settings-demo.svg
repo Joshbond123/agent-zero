@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="760" viewBox="0 0 1200 760">
+  <rect width="1200" height="760" fill="#0f172a"/>
+  <rect x="40" y="40" width="1120" height="680" rx="18" fill="#111827" stroke="#334155"/>
+  <text x="70" y="95" fill="#e2e8f0" font-size="30" font-family="Arial">Agent Zero Settings → External Services → Cloudflare Workers AI</text>
+  <rect x="70" y="130" width="1060" height="220" rx="12" fill="#1f2937" stroke="#475569"/>
+  <text x="95" y="170" fill="#93c5fd" font-size="24" font-family="Arial">Credential form</text>
+  <g font-family="Arial" font-size="18" fill="#e5e7eb">
+    <text x="95" y="220">Name</text><rect x="95" y="235" width="230" height="42" rx="6" fill="#0b1220" stroke="#64748b"/>
+    <text x="355" y="220">Cloudflare Account ID</text><rect x="355" y="235" width="290" height="42" rx="6" fill="#0b1220" stroke="#64748b"/>
+    <text x="675" y="220">Workers AI API key</text><rect x="675" y="235" width="250" height="42" rx="6" fill="#0b1220" stroke="#64748b"/>
+    <text x="95" y="315">Model name</text><rect x="95" y="330" width="350" height="42" rx="6" fill="#0b1220" stroke="#64748b"/>
+  </g>
+  <text x="115" y="358" fill="#cbd5e1" font-size="16" font-family="monospace">@cf/openai/gpt-oss-120b</text>
+  <rect x="95" y="390" width="160" height="42" rx="8" fill="#2563eb"/><text x="123" y="417" fill="#fff" font-size="18" font-family="Arial">Add credential</text>
+  <rect x="270" y="390" width="100" height="42" rx="8" fill="#475569"/><text x="302" y="417" fill="#fff" font-size="18" font-family="Arial">Clear</text>
+  <rect x="70" y="380" width="1060" height="300" rx="12" fill="#1f2937" stroke="#475569"/>
+  <text x="95" y="415" fill="#93c5fd" font-size="24" font-family="Arial">Saved credentials</text>
+  <g font-family="Arial" font-size="18" fill="#cbd5e1">
+    <text x="95" y="460">Name</text>
+    <text x="255" y="460">Account ID</text>
+    <text x="495" y="460">Model</text>
+    <text x="785" y="460">Health</text>
+    <text x="950" y="460">Actions</text>
+  </g>
+  <line x1="90" y1="475" x2="1110" y2="475" stroke="#475569"/>
+  <g font-family="Arial" font-size="18" fill="#e5e7eb">
+    <text x="95" y="520">Primary account</text>
+    <text x="255" y="520">1234...abcd</text>
+    <text x="495" y="520">@cf/openai/gpt-oss-120b</text>
+  </g>
+  <rect x="785" y="495" width="90" height="30" rx="14" fill="#166534"/><text x="806" y="515" fill="#fff" font-size="16" font-family="Arial">healthy</text>
+  <rect x="950" y="490" width="70" height="34" rx="6" fill="#2563eb"/><text x="970" y="512" fill="#fff" font-size="16" font-family="Arial">Test</text>
+  <rect x="1030" y="490" width="70" height="34" rx="6" fill="#475569"/><text x="1050" y="512" fill="#fff" font-size="16" font-family="Arial">Edit</text>
+  <text x="95" y="570" fill="#94a3b8" font-size="18" font-family="Arial">Demo artifact showing the new Cloudflare Workers AI credential manager UI.</text>
+</svg>

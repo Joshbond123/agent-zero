@@ -1,6 +1,5 @@
 import base64
 import warnings
-import whisper
 import tempfile
 import asyncio
 from python.helpers import runtime, rfc, settings, files
@@ -38,6 +37,7 @@ async def _preload(model_name:str):
                 display_time=99,
                 group="whisper-preload")
             PrintStyle.standard(f"Loading Whisper model: {model_name}")
+            import whisper
             _model = whisper.load_model(name=model_name, download_root=files.get_abs_path("/tmp/models/whisper")) # type: ignore
             _model_name = model_name
             NotificationManager.send_notification(
