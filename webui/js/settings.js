@@ -644,6 +644,13 @@ settingsModalProxy.renderCloudflareWorkersAI = function () {
     const mount = document.getElementById('cloudflare-workers-ai-settings');
     if (!mount) return;
     const state = this.cloudflareWorkersAI;
+    const formatTs = (value) => {
+        if (!value) return '—';
+        const date = new Date(value * 1000);
+        if (Number.isNaN(date.getTime())) return '—';
+        return date.toLocaleString();
+    };
+
     const rows = state.credentials.map(cred => `
         <tr>
             <td>${cred.name || ''}</td>
@@ -651,6 +658,12 @@ settingsModalProxy.renderCloudflareWorkersAI = function () {
             <td><code>${cred.model_name || ''}</code></td>
             <td>${cred.enabled ? 'Enabled' : 'Disabled'}</td>
             <td><span class="cfwai-status ${cred.healthy ? 'healthy' : 'cooldown'}">${cred.status || 'unknown'}</span><div class="cfwai-substatus">${cred.last_status_message || ''}</div></td>
+            <td>
+                <div>Requests: ${cred.request_count || 0}</div>
+                <div>Success/Fail: ${(cred.success_count || 0)}/${(cred.error_count || 0)}</div>
+                <div>Last used: ${formatTs(cred.last_used_at)}</div>
+                <div>Cooldown: ${cred.cooldown_until && cred.cooldown_until * 1000 > Date.now() ? 'Active' : 'None'}</div>
+            </td>
             <td>
                 <button class="btn btn-field" data-action="test" data-id="${cred.id}">Test</button>
                 <button class="btn btn-field" data-action="edit" data-id="${cred.id}">Edit</button>
@@ -676,8 +689,8 @@ settingsModalProxy.renderCloudflareWorkersAI = function () {
             </div>
             <div class="cfwai-table-wrap">
                 <table class="cfwai-table">
-                    <thead><tr><th>Name</th><th>Account ID</th><th>Model</th><th>Enabled</th><th>Health</th><th>Actions</th></tr></thead>
-                    <tbody>${rows || '<tr><td colspan="6">No Cloudflare Workers AI credentials saved yet.</td></tr>'}</tbody>
+                    <thead><tr><th>Name</th><th>Account ID</th><th>Model</th><th>Enabled</th><th>Health</th><th>Usage</th><th>Actions</th></tr></thead>
+                    <tbody>${rows || '<tr><td colspan="7">No Cloudflare Workers AI credentials saved yet.</td></tr>'}</tbody>
                 </table>
             </div>
         </div>`;

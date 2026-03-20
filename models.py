@@ -579,7 +579,9 @@ class CloudflareWorkersAIChatWrapper(LiteLLMChatWrapper):
         apply_rate_limiter_sync(self.a0_model_conf, str(msgs))
 
         def op(_credential, route_kwargs):
-            return completion(model=self.model_name, messages=msgs, stop=stop, **self._with_request_kwargs(kwargs, route_kwargs))
+            call_kwargs = self._with_request_kwargs(kwargs, route_kwargs)
+            model_name = call_kwargs.pop("model", self.model_name)
+            return completion(model=model_name, messages=msgs, stop=stop, **call_kwargs)
 
         resp = self.router.run_with_rotation_sync(operation=op)
         parsed = _parse_chunk(resp)
@@ -592,7 +594,9 @@ class CloudflareWorkersAIChatWrapper(LiteLLMChatWrapper):
         result = ChatGenerationResult()
 
         async def op(_credential, route_kwargs):
-            response = await acompletion(model=self.model_name, messages=msgs, stream=True, stop=stop, **self._with_request_kwargs(kwargs, route_kwargs))
+            call_kwargs = self._with_request_kwargs(kwargs, route_kwargs)
+            model_name = call_kwargs.pop("model", self.model_name)
+            response = await acompletion(model=model_name, messages=msgs, stream=True, stop=stop, **call_kwargs)
             return response
 
         response = await self.router.run_with_rotation(operation=op)
@@ -616,7 +620,9 @@ class CloudflareWorkersAIChatWrapper(LiteLLMChatWrapper):
         result = ChatGenerationResult()
 
         async def op(_credential, route_kwargs):
-            return await acompletion(model=self.model_name, messages=msgs_conv, stream=True, **{**call_kwargs, **route_kwargs})
+            merged = {**call_kwargs, **route_kwargs}
+            model_name = merged.pop("model", self.model_name)
+            return await acompletion(model=model_name, messages=msgs_conv, stream=True, **merged)
 
         response = await self.router.run_with_rotation(operation=op)
         async for chunk in response:
@@ -967,11 +973,6 @@ def get_chat_model(
     orig = provider.lower()
     provider_name, kwargs = _merge_provider_defaults("chat", orig, kwargs)
     wrapper_cls = CloudflareWorkersAIChatWrapper if orig == "cloudflare_workers_ai" else LiteLLMChatWrapper
-    if orig == "cloudflare_workers_ai" and "api_key" not in kwargs:
-        credential = get_manager().next_credential()
-        if credential:
-            kwargs["api_key"] = credential.get_api_key()
-            kwargs["api_base"] = credential.api_base
     return _get_litellm_chat(
         wrapper_cls, name, provider_name, model_config, **kwargs
     )
@@ -983,11 +984,6 @@ def get_browser_model(
     orig = provider.lower()
     provider_name, kwargs = _merge_provider_defaults("chat", orig, kwargs)
     wrapper_cls = CloudflareWorkersAIBrowserWrapper if orig == "cloudflare_workers_ai" else BrowserCompatibleChatWrapper
-    if orig == "cloudflare_workers_ai" and "api_key" not in kwargs:
-        credential = get_manager().next_credential()
-        if credential:
-            kwargs["api_key"] = credential.get_api_key()
-            kwargs["api_base"] = credential.api_base
     return _get_litellm_chat(
         wrapper_cls, name, provider_name, model_config, **kwargs
     )

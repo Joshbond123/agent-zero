@@ -215,7 +215,7 @@ class MCPServerRemote(BaseModel):
     description: Optional[str] = Field(default="Remote SSE Server")
     type: str = Field(default="sse", description="Server connection type")
     url: str = Field(default_factory=str)
-    headers: dict[str, Any] | None = Field(default_factory=dict[str, Any])
+    headers: dict[str, Any] | None = Field(default_factory=dict)
     init_timeout: int = Field(default=0)
     tool_timeout: int = Field(default=0)
     verify: bool = Field(default=True, description="Verify SSL certificates")
@@ -290,7 +290,7 @@ class MCPServerLocal(BaseModel):
     type: str = Field(default="stdio", description="Server connection type")
     command: str = Field(default_factory=str)
     args: list[str] = Field(default_factory=list)
-    env: dict[str, str] | None = Field(default_factory=dict[str, str])
+    env: dict[str, str] | None = Field(default_factory=dict)
     encoding: str = Field(default="utf-8")
     encoding_error_handler: Literal["strict", "ignore", "replace"] = Field(
         default="strict"
