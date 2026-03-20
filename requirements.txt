@@ -1,10 +1,12 @@
+--extra-index-url https://download.pytorch.org/whl/cpu
+
 a2wsgi==1.10.8
 ansio==0.0.1
-browser-use==0.5.11
+browser-use==0.5.11; python_version >= "3.11"
 docker==7.1.0
 duckduckgo-search==6.1.12
 faiss-cpu==1.11.0
-fastmcp==2.3.4
+fastmcp==2.3.5
 fasta2a==0.5.0
 flask[async]==3.0.3
 flask-basicauth==0.2.0
@@ -16,7 +18,7 @@ simpleeval==1.0.3
 langchain-core==0.3.49
 langchain-community==0.3.19
 langchain-unstructured[all-docs]==0.1.6
-openai-whisper==20240930
+openai-whisper==20240930; python_version >= "3.11"
 lxml_html_clean==0.3.1
 markdown==3.7
 mcp==1.13.1
@@ -26,9 +28,13 @@ playwright==1.52.0
 pypdf==6.0.0
 python-dotenv==1.1.0
 pytz==2024.2
+numpy==1.26.4
+torch==2.2.2+cpu
 sentence-transformers==3.0.1
 tiktoken==0.8.0
 unstructured[all-docs]==0.16.23
+unstructured-inference==1.1.1
+opencv-python==4.11.0.86
 unstructured-client==0.31.0
 webcolors==24.6.0
 nest-asyncio==1.6.0
@@ -42,3 +48,4 @@ crontab==1.0.1
 pathspec>=0.12.1
 psutil>=7.0.0
 soundfile==0.13.1
+setuptools>=70.0.0

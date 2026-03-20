@@ -1,8 +1,7 @@
 import os
 from typing import Annotated, Literal, Union
 from urllib.parse import urlparse
-from openai import BaseModel
-from pydantic import Field
+from pydantic import BaseModel, Field
 from fastmcp import FastMCP
 
 from agent import AgentContext, AgentContextType, UserMessage

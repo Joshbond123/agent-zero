@@ -76,3 +76,33 @@ def test_router_retries_next_credential(monkeypatch, tmp_path):
     saved = json.loads(Path(storage).read_text())
     statuses = {item["id"]: item["healthy"] for item in saved["credentials"]}
     assert statuses == {"a": False, "b": True}
+
+
+def test_route_kwargs_uses_credential_model(monkeypatch, tmp_path):
+    storage = tmp_path / "cfwai.json"
+    manager = CloudflareWorkersAICredentialManager(str(storage))
+    manager.save_credentials([
+        CloudflareCredential(id="a", name="A", account_id="acc-a", api_key_secret="A_KEY", model_name="@cf/meta/llama-3.3"),
+    ])
+    router = CloudflareWorkersAIRouter(manager)
+    monkeypatch.setattr(CloudflareCredential, "get_api_key", lambda self: "token-a")
+
+    cred = manager.next_credential()
+    kwargs = router.build_request_kwargs(cred)
+    assert kwargs["model"] == "openai/@cf/meta/llama-3.3"
+    assert kwargs["api_base"].endswith("/accounts/acc-a/ai/v1/")
+
+
+def test_usage_counters_update(tmp_path):
+    storage = tmp_path / "cfwai.json"
+    manager = CloudflareWorkersAICredentialManager(str(storage))
+    manager.save_credentials([
+        CloudflareCredential(id="a", name="A", account_id="acc-a", api_key_secret="A_KEY", model_name="m1"),
+    ])
+    manager.mark_result("a", True, "ok")
+    manager.mark_result("a", False, "fail")
+    cred = manager.get_credential("a")
+    assert cred.request_count == 2
+    assert cred.success_count == 1
+    assert cred.error_count == 1
+    assert cred.last_used_at > 0
