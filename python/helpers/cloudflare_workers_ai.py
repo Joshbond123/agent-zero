@@ -41,6 +41,10 @@ class CloudflareCredential:
     last_status_message: str = "Not checked yet"
     failure_count: int = 0
     cooldown_until: float = 0.0
+    request_count: int = 0
+    success_count: int = 0
+    error_count: int = 0
+    last_used_at: float = 0.0
 
     def to_dict(self, include_secret: bool = False) -> dict[str, Any]:
         payload = {
@@ -57,6 +61,10 @@ class CloudflareCredential:
             "last_status_message": self.last_status_message,
             "failure_count": self.failure_count,
             "cooldown_until": self.cooldown_until,
+            "request_count": self.request_count,
+            "success_count": self.success_count,
+            "error_count": self.error_count,
+            "last_used_at": self.last_used_at,
         }
         if include_secret:
             payload["api_key_secret"] = self.api_key_secret
@@ -176,18 +184,22 @@ class CloudflareWorkersAICredentialManager:
             updated: list[CloudflareCredential] = []
             for cred in credentials:
                 if cred.id == cred_id:
+                    cred.request_count += 1
+                    cred.last_used_at = now
                     cred.last_checked_at = now
                     cred.last_status_message = message
                     if success:
                         cred.status = "healthy"
                         cred.healthy = True
                         cred.last_success_at = now
+                        cred.success_count += 1
                         cred.failure_count = 0
                         cred.cooldown_until = 0.0
                     else:
                         cred.status = "cooldown"
                         cred.healthy = False
                         cred.last_failure_at = now
+                        cred.error_count += 1
                         cred.failure_count += 1
                         cooldown = min(COOLDOWN_SECONDS * (2 ** max(0, cred.failure_count - 1)), 15 * 60)
                         cred.cooldown_until = now + cooldown
@@ -238,10 +250,13 @@ class CloudflareWorkersAIRouter:
         api_key = credential.get_api_key()
         if not api_key:
             raise ValueError(f"Cloudflare Workers AI credential '{credential.name}' is missing an API key.")
+        model_name = credential.model_name.strip()
+        litellm_model = model_name if "/" in model_name and not model_name.startswith("@cf/") else f"openai/{model_name}"
         return {
             "api_key": api_key,
             "api_base": credential.api_base,
             "base_url": credential.api_base,
+            "model": litellm_model,
             "extra_headers": {},
         }
 
@@ -271,8 +286,8 @@ class CloudflareWorkersAIRouter:
                 raise RuntimeError(
                     "No enabled Cloudflare Workers AI credentials are currently healthy enough to serve requests."
                 )
-            route_kwargs = self.build_request_kwargs(credential)
             try:
+                route_kwargs = self.build_request_kwargs(credential)
                 LOGGER.info(
                     "workers_ai.route.selected",
                     extra={
@@ -319,8 +334,8 @@ class CloudflareWorkersAIRouter:
                 raise RuntimeError(
                     "No enabled Cloudflare Workers AI credentials are currently healthy enough to serve requests."
                 )
-            route_kwargs = self.build_request_kwargs(credential)
             try:
+                route_kwargs = self.build_request_kwargs(credential)
                 LOGGER.info(
                     "workers_ai.route.selected",
                     extra={
@@ -342,6 +357,7 @@ class CloudflareWorkersAIRouter:
                 if attempt < MAX_RETRY_ATTEMPTS - 1:
                     delay = min(BACKOFF_BASE_SECONDS * (2 ** attempt) + random.random(), BACKOFF_MAX_SECONDS)
                     time.sleep(delay)
+                    self._recover_credentials_if_due_sync()
         raise RuntimeError("Cloudflare Workers AI routing failed after retries: " + " | ".join(errors))
 
     async def _recover_credentials_if_due(self):
@@ -355,6 +371,27 @@ class CloudflareWorkersAIRouter:
                 continue
             try:
                 await self.test_credential(credential, prompt="Reply with HEALTHY")
+                self.manager.mark_result(credential.id, True, "Recovered after health check")
+            except Exception as exc:
+                self.manager.mark_result(credential.id, False, f"Recovery check failed: {exc}")
+
+    def _recover_credentials_if_due_sync(self):
+        now = time.time()
+        for credential in self.manager.list_credentials():
+            if not credential.enabled or credential.healthy:
+                continue
+            if now < credential.cooldown_until:
+                continue
+            if credential.last_checked_at and now - credential.last_checked_at < RECOVERY_CHECK_INTERVAL_SECONDS:
+                continue
+            try:
+                import openai
+
+                client = openai.OpenAI(api_key=credential.get_api_key(), base_url=credential.api_base)
+                client.chat.completions.create(
+                    model=credential.model_name,
+                    messages=[{"role": "user", "content": "Reply with HEALTHY"}],
+                )
                 self.manager.mark_result(credential.id, True, "Recovered after health check")
             except Exception as exc:
                 self.manager.mark_result(credential.id, False, f"Recovery check failed: {exc}")

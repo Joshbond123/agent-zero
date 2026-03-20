@@ -158,6 +158,10 @@ def _patched_fix_gemini_schema(self, schema: dict[str, Any]) -> dict[str, Any]:
 
 def apply():
     """Applies the monkey-patch to ChatGoogle."""
-    from browser_use.llm import ChatGoogle
+    try:
+        from browser_use.llm import ChatGoogle
+    except ModuleNotFoundError:
+        return False
 
     ChatGoogle._fix_gemini_schema = _patched_fix_gemini_schema
+    return True
